@@ -32,13 +32,20 @@ pub fn derive(input: TokenStream) -> TokenStream {
         let name = field.ident.as_ref().unwrap();
         let ty = &field.ty;
         quote! {
-            fn #name(&mut self, #name: #ty) -> &mut Self {
+            pub fn #name(&mut self, #name: #ty) -> &mut Self {
                 self.#name = Some(#name);
                 self
             }
         }
     });
 
+    let inst_init = fields.iter().map(|field| {
+        let name = field.ident.as_ref().unwrap();
+        quote! {
+           #name: self.#name.ok_or_else(|| Box::<dyn std::error::Error>::from("is none".to_string()))? // meh...
+        //    #name: self.#name.unwrap()
+        }
+    });
     let expanded = quote! {
         impl #name {
             pub fn builder() -> #builder_name {
@@ -52,6 +59,13 @@ pub fn derive(input: TokenStream) -> TokenStream {
         }
         impl #builder_name {
             #(#builder_setter)*
+
+            pub fn build(self) -> std::result::Result<#name, Box<dyn std::error::Error>> {
+
+                Ok(#name {
+                    #(#inst_init),*
+                })
+            }
         }
     };
     proc_macro::TokenStream::from(expanded)
