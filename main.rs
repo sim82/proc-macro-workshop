@@ -1,6 +1,5 @@
 use derive_builder::Builder;
 #[derive(Builder)]
-// #[derive(Debug)]
 pub struct Command {
     executable: String,
     args: Vec<String>,
@@ -9,7 +8,9 @@ pub struct Command {
 }
 
 fn main() {
-    let builder = Command::builder();
-
-    let _ = builder;
+    let mut builder = Command::builder();
+    builder.executable("cargo".to_owned());
+    builder.args(vec!["build".to_owned(), "--release".to_owned()]);
+    builder.env(vec![]);
+    builder.current_dir("..".to_owned());
 }
