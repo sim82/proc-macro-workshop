@@ -10,9 +10,14 @@ publish = false
 name = "workshop"
 path = "main.rs"
 
+
 [dependencies]
 bitfield = { path = "bitfield" }
 derive_builder = { path = "builder" }
 derive_debug = { path = "debug" }
 seq = { path = "seq" }
 sorted = { path = "sorted" }
+syn = "^1"
+quote = "^1"
+
+proc-macro2 = "^1"
