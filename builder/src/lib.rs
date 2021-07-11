@@ -42,7 +42,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let inst_init = fields.iter().map(|field| {
         let name = field.ident.as_ref().unwrap();
         quote! {
-           #name: self.#name.ok_or_else(|| Box::<dyn std::error::Error>::from("is none".to_string()))? // meh...
+           #name: self.#name.ok_or_else(|| Box::<dyn std::error::Error>::from(format!("{} is not set in builder", stringify!(#name))))? // meh...
         //    #name: self.#name.unwrap()
         }
     });
