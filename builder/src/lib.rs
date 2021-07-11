@@ -42,8 +42,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let inst_init = fields.iter().map(|field| {
         let name = field.ident.as_ref().unwrap();
         quote! {
-           #name: self.#name.ok_or_else(|| Box::<dyn std::error::Error>::from(format!("{} is not set in builder", stringify!(#name))))? // meh...
-        //    #name: self.#name.unwrap()
+           #name: self.#name.as_ref().ok_or_else(|| Box::<dyn std::error::Error>::from(format!("{} is not set in builder", stringify!(#name))))?.clone() // meh...
         }
     });
     let expanded = quote! {
@@ -60,7 +59,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         impl #builder_name {
             #(#builder_setter)*
 
-            pub fn build(self) -> std::result::Result<#name, Box<dyn std::error::Error>> {
+            pub fn build(&mut self) -> std::result::Result<#name, Box<dyn std::error::Error>> {
 
                 Ok(#name {
                     #(#inst_init),*
