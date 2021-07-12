@@ -63,28 +63,25 @@ fn builder_each_ident(field: &Field) -> Option<Ident> {
         return None;
     }
     match field.attrs[0].parse_meta() {
-        Ok(meta) => match meta {
-            syn::Meta::List(ref meta_list) if meta_list.path.is_ident("builder") => {
-                match meta_list.nested.first() {
-                    Some(NestedMeta::Meta(Meta::NameValue(MetaNameValue {
-                        lit: Lit::Str(s),
-                        path,
-                        ..
-                    }))) if path.is_ident("each") => {
-                        // eprintln!("lit: {:?}", s);
-                        // let s = s.parse().unwrap();
-                        let path = s.parse::<Path>();
-                        match &path {
-                            Ok(meta) => meta.get_ident().cloned(),
-                            Err(_) => None,
-                        }
+        Ok(syn::Meta::List(ref meta_list))
+            if meta_list.path.is_ident("builder") || meta_list.nested.len() == 1 =>
+        {
+            match meta_list.nested.first() {
+                Some(NestedMeta::Meta(Meta::NameValue(MetaNameValue {
+                    lit: Lit::Str(s),
+                    path,
+                    ..
+                }))) if path.is_ident("each") => {
+                    let path = s.parse::<Path>();
+                    match &path {
+                        Ok(meta) => meta.get_ident().cloned(),
+                        Err(_) => None,
                     }
-                    _ => None,
                 }
+                _ => None,
             }
-            _ => None,
-        },
-        Err(_) => None,
+        }
+        _ => None,
     }
 }
 
