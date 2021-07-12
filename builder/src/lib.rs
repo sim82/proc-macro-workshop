@@ -1,8 +1,6 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{
-    parse_macro_input, DeriveInput, Field, Ident, Lit, Meta, MetaNameValue, NestedMeta, Path, Type,
-};
+use syn::{DeriveInput, Field, Ident, Lit, Meta, MetaNameValue, NestedMeta, Path, Type, parse_macro_input, spanned::Spanned};
 
 fn option_inner_type(ty: &Type) -> Option<&Type> {
     match ty {
@@ -58,7 +56,7 @@ fn vec_inner_type(ty: &Type) -> Option<&Type> {
     }
 }
 
-fn builder_each_ident(field: &Field) -> Option<Ident> {
+fn builder_ident(field: &Field) -> Option<(Path, Ident)> {
     if field.attrs.is_empty() {
         return None;
     }
@@ -71,10 +69,10 @@ fn builder_each_ident(field: &Field) -> Option<Ident> {
                     lit: Lit::Str(s),
                     path,
                     ..
-                }))) if path.is_ident("each") => {
-                    let path = s.parse::<Path>();
-                    match &path {
-                        Ok(meta) => meta.get_ident().cloned(),
+                }))) => {
+                    let ident_path = s.parse::<Path>();
+                    match &ident_path {
+                        Ok(meta) => Some((path.clone(), meta.get_ident().unwrap().clone())),
                         Err(_) => None,
                     }
                 }
@@ -139,28 +137,34 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 }
             }
         } else if let Some(inner_type) = vec_inner_type(&field.ty) {
-            let each_ident = builder_each_ident(&field);
+            let each_ident = builder_ident(&field);
 
             match each_ident {
-                Some(id) => {
-                    if id != *name {
-                        quote! {
-                            pub fn #id(&mut self, #id: #inner_type) -> &mut Self {
-                                self.#name.push(#id);
-                                self
+                Some((path, id)) => {
+                    if path.is_ident("each") {
+                        if id != *name {
+                            quote! {
+                                pub fn #id(&mut self, #id: #inner_type) -> &mut Self {
+                                    self.#name.push(#id);
+                                    self
+                                }
+                                pub fn #name(&mut self, #name: #ty) -> &mut Self {
+                                    self.#name = #name;
+                                    self
+                                }
                             }
-                            pub fn #name(&mut self, #name: #ty) -> &mut Self {
-                                self.#name = #name;
-                                self
+                        } else {
+                            quote! {
+                                pub fn #id(&mut self, #id: #inner_type) -> &mut Self {
+                                    self.#id.push(#id);
+                                    self
+                                }
                             }
                         }
                     } else {
-                        quote! {
-                            pub fn #id(&mut self, #id: #inner_type) -> &mut Self {
-                                self.#id.push(#id);
-                                self
-                            }
-                        }
+                        let err = syn::Error::new(field.attrs[0].span(), "expected 'builder(each = \"...\")'"));
+                        err.to_compile_error();
+                        
                     }
                 }
 
