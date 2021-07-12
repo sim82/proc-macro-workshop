@@ -1,6 +1,8 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, DeriveInput, Type};
+use syn::{
+    parse_macro_input, DeriveInput, Field, Ident, Lit, Meta, MetaNameValue, NestedMeta, Path, Type,
+};
 
 fn option_inner_type(ty: &Type) -> Option<&Type> {
     match ty {
@@ -29,7 +31,64 @@ fn option_inner_type(ty: &Type) -> Option<&Type> {
     }
 }
 
-#[proc_macro_derive(Builder)]
+fn vec_inner_type(ty: &Type) -> Option<&Type> {
+    match ty {
+        syn::Type::Path(ref type_path) => match type_path.path {
+            syn::Path {
+                ref segments,
+                leading_colon: _,
+            } if segments.len() == 1 && segments[0].ident == "Vec" => {
+                match &segments[0].arguments {
+                    syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments {
+                        args,
+                        colon2_token: _,
+                        gt_token: _,
+                        lt_token: _,
+                    }) if args.len() == 1 => match args[0] {
+                        syn::GenericArgument::Type(ref ty) => Some(ty),
+                        _ => None,
+                    },
+                    _ => None,
+                }
+            }
+
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn builder_each_ident(field: &Field) -> Option<Ident> {
+    if field.attrs.is_empty() {
+        return None;
+    }
+    match field.attrs[0].parse_meta() {
+        Ok(meta) => match meta {
+            syn::Meta::List(ref meta_list) if meta_list.path.is_ident("builder") => {
+                match meta_list.nested.first() {
+                    Some(NestedMeta::Meta(Meta::NameValue(MetaNameValue {
+                        lit: Lit::Str(s),
+                        path,
+                        ..
+                    }))) if path.is_ident("each") => {
+                        // eprintln!("lit: {:?}", s);
+                        // let s = s.parse().unwrap();
+                        let path = s.parse::<Path>();
+                        match &path {
+                            Ok(meta) => meta.get_ident().cloned(),
+                            Err(_) => None,
+                        }
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        },
+        Err(_) => None,
+    }
+}
+
+#[proc_macro_derive(Builder, attributes(builder))]
 pub fn derive(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let name = input.ident;
@@ -49,6 +108,10 @@ pub fn derive(input: TokenStream) -> TokenStream {
             quote! {
                 #name: #ty
             }
+        } else if let Some(_inner_type) = vec_inner_type(&field.ty) {
+            quote! {
+                #name: #ty
+            }
         } else {
             quote! {
                 #name: Option<#ty>
@@ -57,8 +120,15 @@ pub fn derive(input: TokenStream) -> TokenStream {
     });
     let builder_init = fields.iter().map(|field| {
         let name = field.ident.as_ref().unwrap();
-        quote! {
-            #name: None
+
+        if let Some(_inner_type) = vec_inner_type(&field.ty) {
+            quote! {
+                #name: Vec::new()
+            }
+        } else {
+            quote! {
+                #name: None
+            }
         }
     });
     let builder_setter = fields.iter().map(|field| {
@@ -69,6 +139,41 @@ pub fn derive(input: TokenStream) -> TokenStream {
                 pub fn #name(&mut self, #name: #inner_type) -> &mut Self {
                     self.#name = Some(#name);
                     self
+                }
+            }
+        } else if let Some(inner_type) = vec_inner_type(&field.ty) {
+            let each_ident = builder_each_ident(&field);
+
+            match each_ident {
+                Some(id) => {
+                    if id != *name {
+                        quote! {
+                            pub fn #id(&mut self, #id: #inner_type) -> &mut Self {
+                                self.#name.push(#id);
+                                self
+                            }
+                            pub fn #name(&mut self, #name: #ty) -> &mut Self {
+                                self.#name = #name;
+                                self
+                            }
+                        }
+                    } else {
+                        quote! {
+                            pub fn #id(&mut self, #id: #inner_type) -> &mut Self {
+                                self.#id.push(#id);
+                                self
+                            }
+                        }
+                    }
+                }
+
+                None => {
+                    quote! {
+                        pub fn #name(&mut self, #name: #ty) -> &mut Self {
+                            self.#name = #name;
+                            self
+                        }
+                    }
                 }
             }
         } else {
@@ -84,6 +189,10 @@ pub fn derive(input: TokenStream) -> TokenStream {
     let inst_init = fields.iter().map(|field| {
         let name = field.ident.as_ref().unwrap();
         if let Some(_) = option_inner_type(&field.ty) {
+            quote! {
+               #name: self.#name.clone()
+            }
+        } else if let Some(_) = vec_inner_type(&field.ty) {
             quote! {
                #name: self.#name.clone()
             }
