@@ -1,6 +1,9 @@
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{DeriveInput, Field, Ident, Lit, Meta, MetaNameValue, NestedMeta, Path, Type, parse_macro_input, spanned::Spanned};
+use syn::{
+    parse_macro_input, spanned::Spanned, DeriveInput, Field, Ident, Lit, Meta, MetaNameValue,
+    NestedMeta, Path, Type,
+};
 
 fn option_inner_type(ty: &Type) -> Option<&Type> {
     match ty {
@@ -109,7 +112,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
             }
         } else {
             quote! {
-                #name: Option<#ty>
+                #name: core::option::Option<#ty>
             }
         }
     });
@@ -118,11 +121,11 @@ pub fn derive(input: TokenStream) -> TokenStream {
 
         if let Some(_inner_type) = vec_inner_type(&field.ty) {
             quote! {
-                #name: Vec::new()
+                #name: std::vec::Vec::new()
             }
         } else {
             quote! {
-                #name: None
+                #name: core::option::Option::None
             }
         }
     });
@@ -132,7 +135,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         if let Some(inner_type) = option_inner_type(&field.ty) {
             quote! {
                 pub fn #name(&mut self, #name: #inner_type) -> &mut Self {
-                    self.#name = Some(#name);
+                    self.#name = core::option::Option::Some(#name);
                     self
                 }
             }
@@ -162,9 +165,12 @@ pub fn derive(input: TokenStream) -> TokenStream {
                             }
                         }
                     } else {
-                        let err = syn::Error::new(field.attrs[0].span(), "expected 'builder(each = \"...\")'"));
-                        err.to_compile_error();
-                        
+                        // meh, this is crap... package this whole match thingie in builder_ident(_each) and return syn::Result with proper error
+                        let err = syn::Error::new(
+                            field.attrs[0].parse_meta().unwrap().span(),
+                            "expected `builder(each = \"...\")`",
+                        );
+                        err.to_compile_error()
                     }
                 }
 
@@ -180,7 +186,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         } else {
             quote! {
                 pub fn #name(&mut self, #name: #ty) -> &mut Self {
-                    self.#name = Some(#name);
+                    self.#name = core::option::Option::Some(#name);
                     self
                 }
             }
@@ -199,7 +205,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
             }
         } else {
             quote! {
-               #name: self.#name.as_ref().ok_or_else(|| Box::<dyn std::error::Error>::from(format!("{} is not set in builder", stringify!(#name))))?.clone() // meh...
+               #name: self.#name.as_ref().ok_or_else(|| std::boxed::Box::<dyn std::error::Error>::from(format!("{} is not set in builder", stringify!(#name))))?.clone() // meh...
             }
         }
     });
@@ -217,7 +223,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         impl #builder_name {
             #(#builder_setter)*
 
-            pub fn build(&mut self) -> std::result::Result<#name, Box<dyn std::error::Error>> {
+            pub fn build(&mut self) -> std::result::Result<#name, std::boxed::Box<dyn std::error::Error>> {
 
                 Ok(#name {
                     #(#inst_init),*
